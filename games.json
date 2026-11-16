@@ -1,0 +1,35 @@
+{
+  "_comment": "Ports the installer knows. title_id = the game's title ID; version = the exact default.xex version (XEX execution-info 'version' as a number) the port was built from, or null to skip the check; required = files/folders the port needs; program = the port's program name. Add your own port by adding an entry (a games.json next to the installer adds to the built-in list).",
+  "games": [
+    {
+      "title_id": "5841095A",
+      "name": "Trials HD",
+      "version": 258,
+      "required": ["default.xex", "data"],
+      "program": "trialshd",
+      "port_url": "https://github.com/trev82usa/TrialsHD-Recomp"
+    },
+    {
+      "title_id": "58410B2B",
+      "name": "Guardian Heroes",
+      "version": 3,
+      "required": ["default.xex", "media"],
+      "program": "guardianheroes",
+      "port_url": "https://github.com/trev82usa/Guardians-of-Heroes-static-recomp"
+    },
+    {
+      "title_id": "5841082D",
+      "name": "Root Beer Tapper",
+      "version": 258,
+      "required": ["default.xex", "media", "classic"],
+      "program": "rootbeertapper"
+    },
+    {
+      "title_id": "584108FA",
+      "name": "The Simpsons Arcade",
+      "version": null,
+      "required": ["default.xex", "0B"],
+      "program": "simpsons"
+    }
+  ]
+}

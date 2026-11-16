@@ -1,0 +1,62 @@
+name: Build and release
+
+# Builds XBLA-Installer for Windows and Linux on every push. Pushing a tag like v1.0.0 also
+# publishes a GitHub release with both downloads attached.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build XBLA-Installer.exe
+        run: |
+          python -m pip install --quiet pyinstaller
+          python -m PyInstaller --onefile --windowed --name XBLA-Installer --add-data "games.json;." xbla_installer.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XBLA-Installer-windows
+          path: dist/XBLA-Installer.exe
+
+  linux:
+    runs-on: ubuntu-22.04   # older glibc, so the binary runs on more distros
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build XBLA-Installer (Linux)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq python3-tk python3-pip
+          python3 -m pip install --quiet pyinstaller
+          python3 -m PyInstaller --onefile --windowed --name XBLA-Installer --add-data "games.json:." xbla_installer.py
+          mkdir -p pkg/XBLA-Installer
+          cp dist/XBLA-Installer xbla_installer.py stfs.py games.json README.md LICENSE pkg/XBLA-Installer/
+          tar -C pkg -czf XBLA-Installer-linux-x64.tar.gz XBLA-Installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XBLA-Installer-linux
+          path: XBLA-Installer-linux-x64.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: XBLA Installer ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            art/XBLA-Installer-windows/XBLA-Installer.exe
+            art/XBLA-Installer-linux/XBLA-Installer-linux-x64.tar.gz
