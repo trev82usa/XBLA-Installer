@@ -6,7 +6,15 @@ Gets the game files out of **your own Xbox Live Arcade package**, ready for a re
 Python, no command line, no other tools: pick the package, pick the port's folder, press
 **Install**.
 
-It also works as a plain extractor for any Xbox 360 STFS package (LIVE / CON / PIRS).
+It also works as a plain extractor for any Xbox 360 package (LIVE / CON / PIRS: Arcade games,
+title updates, DLC) and for **disc images**: original Xbox and Xbox 360 ISOs (XGD1, XGD2, XGD3).
+
+**Just want the files?** Tick **Just extract**: it pulls everything out into any folder you pick
+(or, with the folder left empty, a folder next to the file named after the game), with no port
+checks at all.
+
+**Which version have I got?** Pick a package, an ISO or a `default.xex` and it shows the game, its
+title ID and its version straight away, and for known ports whether it's the right version.
 
 > **No game data is included.** This tool only reads packages you already own.
 
@@ -28,7 +36,8 @@ From the [latest release](../../releases/latest):
    **FATXplorer** and copy out the file in `Content/0000000000000000/<TitleID>/000D0000/`. It has a
    long hexadecimal name and no extension.
 2. **Open XBLA Installer** and pick that file under *Game package*. The installer shows which game
-   it is and whether it knows a port for it.
+   and version it is, whether it knows a port for it, and whether your version is the right one.
+   A disc image (`.iso`) works here too.
 3. Under *Install into*, pick **the port's folder** (where `trialshd.exe`, `guardianheroes.exe`
    etc. are). The files go into its `assets` folder automatically. Any other folder works too.
 4. Press **Install.** It extracts everything, checks every block of the package, and for known
@@ -55,11 +64,18 @@ kept as `default.xex.orig`.
 repository's [`games.json`](games.json). It adds to (or overrides) the built-in list, so port
 authors can ship one with their release without rebuilding the installer. Pull requests welcome.
 
+## What it can't open
+
+- **Games on Demand** downloads (a `.data` folder next to the package): a different container, not
+  supported yet; use Velocity.
+- **Redump-style ISOs that are only the video partition**, or images of other consoles.
+
 ## Command line
 
 ```
 xbla_installer.py --package <package file> --dest <folder> [--update <TU or .xexp>] [--xextool <exe>]
-xbla_installer.py --info <package or default.xex>     # which game / which version
+xbla_installer.py --extract-only --package <file> [--dest <folder>]   # just extract, any game
+xbla_installer.py --info <package, .iso or default.xex>   # which game / which version
 ```
 
 ## Building

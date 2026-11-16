@@ -37,7 +37,7 @@ jobs:
           python3 -m pip install --quiet pyinstaller
           python3 -m PyInstaller --onefile --windowed --name XBLA-Installer --add-data "games.json:." xbla_installer.py
           mkdir -p pkg/XBLA-Installer
-          cp dist/XBLA-Installer xbla_installer.py stfs.py games.json README.md LICENSE pkg/XBLA-Installer/
+          cp dist/XBLA-Installer xbla_installer.py stfs.py xdvdfs.py games.json README.md LICENSE pkg/XBLA-Installer/
           tar -C pkg -czf XBLA-Installer-linux-x64.tar.gz XBLA-Installer
       - uses: actions/upload-artifact@v4
         with:

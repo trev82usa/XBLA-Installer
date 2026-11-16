@@ -10,9 +10,12 @@ extract any Xbox 360 STFS package (LIVE / CON / PIRS).
 - For ports it knows (games.json), it checks default.xex is the exact version the port needs,
   and can apply a title update (000B0000 package or default.xexp) with xextool.
 
+Disc images: original Xbox and Xbox 360 ISOs (XGD1/2/3) are extracted too.
+
 Window: just run it (Windows: XBLA-Installer.exe). Command line:
   xbla_installer.py --package <file> [--dest <folder>] [--update <TU or .xexp>] [--xextool <exe>]
-  xbla_installer.py --info <package or default.xex>
+  xbla_installer.py --extract-only --package <file> [--dest <folder>]   (just extract, any game)
+  xbla_installer.py --info <package, disc image or default.xex>   (which game, which version)
 """
 import argparse
 import json
@@ -24,7 +27,7 @@ import sys
 import tempfile
 import threading
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 
 def here():
@@ -42,6 +45,7 @@ def bundled(name):
 sys.path.insert(0, here())
 sys.path.insert(0, getattr(sys, '_MEIPASS', here()))
 from stfs import STFS  # noqa: E402
+import xdvdfs  # noqa: E402
 
 
 # ---------------------------------------------------------------------------------------------
@@ -70,7 +74,10 @@ def vstr(v):
 def xex_info(path):
     """(title_id, version, media_id) from the XEX header (plain text, no decryption)."""
     with open(path, 'rb') as f:
-        d = f.read(0x10000)
+        return xex_header_info(f.read(0x10000))
+
+
+def xex_header_info(d):
     if d[:4] != b'XEX2':
         return None, None, None
     n = struct.unpack('>I', d[20:24])[0]
@@ -83,33 +90,82 @@ def xex_info(path):
 
 
 def package_info(path):
-    """(magic, title_id, content_type, display name) from an STFS header."""
+    """(magic, title_id, content_type, display name, version, base version) from an STFS header."""
     with open(path, 'rb') as f:
         h = f.read(0x1800)
     if h[:4] not in (b'CON ', b'LIVE', b'PIRS'):
         return None
     name = h[0x411:0x411 + 0x80].decode('utf-16-be', 'replace').split('\0')[0].strip()
+    ver, base = struct.unpack('>II', h[0x358:0x360])
     return (h[:4].decode().strip(), struct.unpack('>I', h[0x360:0x364])[0],
-            struct.unpack('>I', h[0x344:0x348])[0], name)
+            struct.unpack('>I', h[0x344:0x348])[0], name, ver, base)
+
+
+def iso_info(path):
+    """(layout, file count, (title, version, media) of default.xex or None) for a disc image."""
+    try:
+        x = xdvdfs.XDVDFS(path)
+    except (ValueError, OSError):
+        return None
+    ents = list(x.entries())
+    xinfo = None
+    for p, is_dir, sec, sz in ents:
+        if not is_dir and p.lower() == 'default.xex':
+            x.f.seek(x.base + sec * xdvdfs.SECTOR)
+            xinfo = xex_header_info(x.f.read(min(sz, 0x10000)))
+    return x.layout, sum(1 for e in ents if not e[1]), xinfo
 
 
 CONTENT_TYPES = {0x000D0000: "Arcade game", 0x000B0000: "Title update", 0x00000002: "DLC",
                  0x00080000: "Game demo", 0x00007000: "Games on Demand"}
 
 
-def describe_package(path):
-    p = package_info(path)
-    if not p:
-        return None, "Not an Xbox 360 package (no LIVE/CON/PIRS header)."
-    magic, tid, ctype, name = p
+def version_verdict(tid, ver):
+    """One line comparing a version with what a known port needs ('' if no port/check)."""
     prof = PROFILES.get(tid)
-    kind = CONTENT_TYPES.get(ctype, f"content type {ctype:08X}")
-    text = f"{name or 'Unnamed'}  -  title {tid:08X}, {kind} ({magic})"
-    if prof:
-        text += f"\nKnown port: {prof['name']}"
-        if prof.get('port_url'):
-            text += f"  ({prof['port_url']})"
-    return p, text
+    if not prof or prof.get('version') is None or ver is None:
+        return ''
+    if ver == prof['version']:
+        return f"Version {vstr(ver)}: the right version for the {prof['name']} port."
+    return (f"Version {vstr(ver)}: the {prof['name']} port needs {vstr(prof['version'])}, "
+            "so you'll also need the title update.")
+
+
+def describe_package(path):
+    """(info, text) for a package, a disc image or a default.xex. info is None if unusable."""
+    p = package_info(path)
+    if p:
+        magic, tid, ctype, name, ver, base = p
+        prof = PROFILES.get(tid)
+        kind = CONTENT_TYPES.get(ctype, f"content type {ctype:08X}")
+        text = f"{name or 'Unnamed'}  -  title {tid:08X}, {kind} ({magic})"
+        text += f"\nVersion {vstr(ver)}" + (f" (base {vstr(base)})" if base != ver else "")
+        if prof:
+            text += f"  -  known port: {prof['name']}"
+            verdict = version_verdict(tid, ver) if ctype != 0x000B0000 else ''
+            if verdict:
+                text += "\n" + verdict
+        return ('stfs',) + p, text
+    i = iso_info(path)
+    if i:
+        layout, nfiles, xinfo = i
+        text = f"Xbox disc image ({layout}), {nfiles} files"
+        if xinfo and xinfo[0] is not None:
+            tid, ver, mid = xinfo
+            prof = PROFILES.get(tid)
+            text += f"\ndefault.xex: title {tid:08X}, version {vstr(ver)}"
+            if prof:
+                text += f"  -  known port: {prof['name']}\n" + version_verdict(tid, ver)
+        return ('iso', layout), text
+    try:
+        tid, ver, mid = xex_info(path)
+    except OSError:
+        tid = None
+    if tid is not None:
+        text = f"default.xex: title {tid:08X}, version {vstr(ver)}, media ID {mid:08X}"
+        v = version_verdict(tid, ver)
+        return None, text + ("\n" + v if v else "") + "\n(This is the program only; pick the package or disc image to install.)"
+    return None, "Not an Xbox 360 package (LIVE/CON/PIRS), Xbox disc image or default.xex."
 
 
 # ---------------------------------------------------------------------------------------------
@@ -200,28 +256,58 @@ def apply_update(dest, update, xextool, log):
         log(f"Updated default.xex (original kept as {os.path.basename(backup)}).")
 
 
-def install(package, dest, update, xextool, log):
+def default_extract_dir(package, info):
+    """'<package folder>/<game name> (<title id>)' for Just extract with no folder picked."""
+    if info[0] == 'stfs':
+        label = f"{info[4] or 'Package'} ({info[2]:08X})"
+    else:
+        label = os.path.splitext(os.path.basename(package))[0]
+    label = ''.join(c for c in label if c not in '<>:"/\\|?*').strip() or 'extracted'
+    return os.path.join(os.path.dirname(os.path.abspath(package)), label)
+
+
+def install(package, dest, update, xextool, log, extract_only=False):
     if not package or not os.path.isfile(package):
-        raise RuntimeError("Pick your game package file first.")
-    if not dest:
-        raise RuntimeError("Pick where to install the files.")
+        raise RuntimeError("Pick your game package or disc image first.")
     info, text = describe_package(package)
     if not info:
         raise RuntimeError(text)
+    if extract_only:
+        dest = dest or default_extract_dir(package, info)
+        log(text)
+        os.makedirs(dest, exist_ok=True)
+        log(f"Just extracting into {dest}")
+        if info[0] == 'iso':
+            xdvdfs.extract(package, dest, log,
+                           progress=lambda p, pc: log(f"  {p}  ({pc}%)", progress=True))
+        else:
+            extract_package(package, dest, log)
+        log(f"Done - everything is in {dest}")
+        return
+    if not dest:
+        raise RuntimeError("Pick where to install the files (or tick Just extract).")
+    if info[0] == 'stfs' and info[3] == 0x000B0000:
+        log("Note: this is a title update package; it's extracted as-is (put it in the "
+            "Title update box to apply it to a game).")
     log(text)
-    tid = info[1]
-    prof = PROFILES.get(tid)
     dest = resolve_dest(dest)
     os.makedirs(dest, exist_ok=True)
     log(f"Extracting into {dest}")
-    extract_package(package, dest, log)
-    log("Extracted and verified every block of the package.")
+    if info[0] == 'iso':
+        xdvdfs.extract(package, dest, log,
+                       progress=lambda p, pc: log(f"  {p}  ({pc}%)", progress=True))
+        log("Extracted every file from the disc image.")
+    else:
+        extract_package(package, dest, log)
+        log("Extracted and verified every block of the package.")
 
     xex = os.path.join(dest, 'default.xex')
     if not os.path.isfile(xex):
-        log("(No default.xex in this package - nothing to check.)")
+        log("(No default.xex here - nothing to check.)")
         return
     xtid, ver, mid = xex_info(xex)
+    tid = xtid if xtid is not None else info[2] if info[0] == 'stfs' else None
+    prof = PROFILES.get(tid)
     log(f"default.xex: title {xtid or 0:08X}, version {vstr(ver)}, media ID {mid or 0:08X}")
     if not prof:
         if update:
@@ -263,7 +349,7 @@ def run_gui():
     root.minsize(680, 480)
     v = {k: tk.StringVar() for k in ('package', 'dest', 'update', 'xextool', 'detected')}
     v['xextool'].set(find_xextool(None) or '')
-    v['detected'].set("Pick a package to see which game it is.")
+    v['detected'].set("Pick a package or disc image to see which game and version it is.")
 
     def on_package(*_):
         p = v['package'].get().strip()
@@ -272,7 +358,7 @@ def run_gui():
     v['package'].trace_add('write', on_package)
 
     rows = [
-        ('package', "Game package (Content/0000000000000000/<TitleID>/000D0000/<long name>)", 'file'),
+        ('package', "Game package (Content/.../<TitleID>/000D0000/<long name>) or disc image (.iso)", 'file'),
         ('dest', "Install into (the port's folder or its assets folder, or any folder)", 'dir'),
         ('update', "Title update - only if asked (000B0000 package or default.xexp)", 'file'),
         ('xextool', "xextool.exe - only needed with a title update", 'file'),
@@ -298,8 +384,14 @@ def run_gui():
     logbox = scrolledtext.ScrolledText(root, height=12, state='disabled')
     logbox.grid(row=r, column=0, columnspan=2, sticky='nsew', padx=8, pady=8)
     root.rowconfigure(r, weight=1)
-    btn = tk.Button(root, text="Install", width=16)
-    btn.grid(row=r + 1, column=0, columnspan=2, pady=(0, 10))
+    only = tk.BooleanVar(value=False)
+    bar = tk.Frame(root)
+    bar.grid(row=r + 1, column=0, columnspan=2, pady=(0, 10))
+    tk.Checkbutton(bar, text="Just extract (any folder, no game checks; empty folder = next to the file)",
+                   variable=only, command=lambda: btn.configure(
+                       text="Extract" if only.get() else "Install")).pack(side='left', padx=8)
+    btn = tk.Button(bar, text="Install", width=16)
+    btn.pack(side='left', padx=8)
 
     def log(msg, progress=False):
         def put():
@@ -314,7 +406,8 @@ def run_gui():
     def work():
         try:
             install(v['package'].get().strip(), v['dest'].get().strip(),
-                    v['update'].get().strip() or None, v['xextool'].get().strip() or None, log)
+                    v['update'].get().strip() or None, v['xextool'].get().strip() or None, log,
+                    extract_only=only.get())
             root.after(0, lambda: messagebox.showinfo("XBLA Installer", "Finished."))
         except Exception as e:
             msg = str(e)
@@ -336,17 +429,14 @@ def main():
     ap.add_argument('--dest')
     ap.add_argument('--update')
     ap.add_argument('--xextool')
-    ap.add_argument('--info', help="describe a package or a default.xex and exit")
+    ap.add_argument('--info', help="describe a package, disc image or default.xex and exit")
+    ap.add_argument('--extract-only', action='store_true',
+                    help="just extract into --dest (default: next to the file), no game checks")
     ap.add_argument('--version', action='version', version=VERSION)
     a = ap.parse_args()
 
     if a.info:
-        if package_info(a.info):
-            print(describe_package(a.info)[1])
-        else:
-            tid, ver, mid = xex_info(a.info)
-            print(f"default.xex: title {tid or 0:08X}, version {vstr(ver)}, media ID {mid or 0:08X}"
-                  if tid is not None else "Not an Xbox 360 package or executable.")
+        print(describe_package(a.info)[1])
         return
     if not a.package:
         try:
@@ -361,7 +451,11 @@ def main():
     def log(msg, progress=False):
         print(msg)
     try:
-        install(a.package, a.dest or os.path.join(os.getcwd(), 'extracted'), a.update, a.xextool, log)
+        if a.extract_only:
+            install(a.package, a.dest, None, None, log, extract_only=True)
+        else:
+            install(a.package, a.dest or os.path.join(os.getcwd(), 'extracted'), a.update,
+                    a.xextool, log)
     except Exception as e:
         print("Problem: " + str(e))
         sys.exit(1)
