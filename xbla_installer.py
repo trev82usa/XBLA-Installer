@@ -27,7 +27,7 @@ import sys
 import tempfile
 import threading
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def here():
@@ -116,8 +116,14 @@ def iso_info(path):
     return x.layout, sum(1 for e in ents if not e[1]), xinfo
 
 
-CONTENT_TYPES = {0x000D0000: "Arcade game", 0x000B0000: "Title update", 0x00000002: "DLC",
-                 0x00080000: "Game demo", 0x00007000: "Games on Demand"}
+CONTENT_TYPES = {
+    0x000D0000: "Arcade game", 0x000B0000: "Title update", 0x00000002: "DLC",
+    0x00080000: "Game demo", 0x00007000: "Games on Demand", 0x00004000: "Installed disc game",
+    0x00009000: "Avatar item", 0x00020000: "Gamer picture", 0x00030000: "Theme",
+    0x00000001: "Saved game", 0x00010000: "Gamer profile", 0x00090000: "Video",
+    0x00002000: "Game trailer", 0x000F0000: "Community game", 0x00050000: "Xbox Original game",
+}
+GAME_TYPES = {0x000D0000, 0x00080000, 0x00007000, 0x00004000}   # packages that hold the game itself
 
 
 def version_verdict(tid, ver):
@@ -139,12 +145,17 @@ def describe_package(path):
         prof = PROFILES.get(tid)
         kind = CONTENT_TYPES.get(ctype, f"content type {ctype:08X}")
         text = f"{name or 'Unnamed'}  -  title {tid:08X}, {kind} ({magic})"
-        text += f"\nVersion {vstr(ver)}" + (f" (base {vstr(base)})" if base != ver else "")
+        if ctype in GAME_TYPES or ctype == 0x000B0000:
+            text += f"\nVersion {vstr(ver)}" + (f" (base {vstr(base)})" if base != ver else "")
         if prof:
-            text += f"  -  known port: {prof['name']}"
-            verdict = version_verdict(tid, ver) if ctype != 0x000B0000 else ''
-            if verdict:
-                text += "\n" + verdict
+            newline = ctype not in GAME_TYPES and ctype != 0x000B0000
+            text += ("\nKnown port: " if newline else "  -  known port: ") + prof['name']
+            if ctype in GAME_TYPES:
+                verdict = version_verdict(tid, ver)
+                if verdict:
+                    text += "\n" + verdict
+            elif ctype == 0x00000002:
+                text += " (this is add-on content, not the game itself)"
         return ('stfs',) + p, text
     i = iso_info(path)
     if i:
@@ -272,6 +283,9 @@ def install(package, dest, update, xextool, log, extract_only=False):
     info, text = describe_package(package)
     if not info:
         raise RuntimeError(text)
+    if info[0] == 'stfs' and info[3] not in GAME_TYPES and not extract_only:
+        log("This isn't the game itself, so it's just extracted (no game checks).")
+        extract_only = True
     if extract_only:
         dest = dest or default_extract_dir(package, info)
         log(text)
