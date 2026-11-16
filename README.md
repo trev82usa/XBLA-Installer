@@ -64,8 +64,9 @@ xbla_installer.py --info <package or default.xex>     # which game / which versi
 
 ## Building
 
-GitHub Actions builds the Windows exe and the Linux binary on every push, and pushing a tag like
-`v1.0.1` publishes a release with both attached (notes from `RELEASE_NOTES.md`). Locally:
+GitHub Actions builds the Windows exe and the Linux binary on every push. Raising `VERSION` in
+`xbla_installer.py` publishes release `v<VERSION>` with both attached (notes from
+`RELEASE_NOTES.md`). Locally:
 `pip install pyinstaller` then
 `pyinstaller --onefile --windowed --name XBLA-Installer --add-data "games.json:." xbla_installer.py`
 (use `;` instead of `:` on Windows).
