@@ -27,7 +27,7 @@ import sys
 import tempfile
 import threading
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 
 def here():
@@ -126,14 +126,20 @@ CONTENT_TYPES = {
 GAME_TYPES = {0x000D0000, 0x00080000, 0x00007000, 0x00004000}   # packages that hold the game itself
 
 
+def supported_versions(prof):
+    v = prof.get('version')
+    return [] if v is None else (list(v) if isinstance(v, list) else [v])
+
+
 def version_verdict(tid, ver):
     """One line comparing a version with what a known port needs ('' if no port/check)."""
     prof = PROFILES.get(tid)
-    if not prof or prof.get('version') is None or ver is None:
+    if not prof or not supported_versions(prof) or ver is None:
         return ''
-    if ver == prof['version']:
-        return f"Version {vstr(ver)}: the right version for the {prof['name']} port."
-    return (f"Version {vstr(ver)}: the {prof['name']} port needs {vstr(prof['version'])}, "
+    if ver in supported_versions(prof):
+        return f"Version {vstr(ver)}: supported by the {prof['name']} port."
+    need = " or ".join(vstr(v) for v in supported_versions(prof))
+    return (f"Version {vstr(ver)}: the {prof['name']} port needs {need}, "
             "so you'll also need the title update.")
 
 
@@ -334,19 +340,20 @@ def install(package, dest, update, xextool, log, extract_only=False):
     missing = [n for n in prof.get('required', []) if not os.path.exists(os.path.join(dest, n))]
     if missing:
         raise RuntimeError("The package is missing " + ", ".join(missing) + ".")
-    need = prof.get('version')
-    if need is not None and ver != need:
+    supported = supported_versions(prof)
+    need = " or ".join(vstr(v) for v in supported)
+    if supported and ver not in supported:
         if not update:
             raise RuntimeError(
-                f"Your copy of {prof['name']} is version {vstr(ver)}; the port needs {vstr(need)} "
+                f"Your copy of {prof['name']} is version {vstr(ver)}; the port needs {need} "
                 f"(the updated release). Pick your title update (the package from "
                 f"{tid:08X}/000B0000/, or a default.xexp) and xextool, and press Install again.")
         apply_update(dest, update, xextool, log)
         _, ver, _ = xex_info(xex)
         log(f"default.xex is now version {vstr(ver)}")
-        if ver != need:
+        if ver not in supported:
             raise RuntimeError(f"After the update default.xex is version {vstr(ver)}, still not "
-                               f"{vstr(need)}. That title update is a different one from the "
+                               f"{need}. That title update is a different one from the "
                                "version the port was built from.")
     prog = prof.get('program')
     log(f"All done - {prof['name']} is ready." + (f" Start {prog} (or {prog}.exe)." if prog else ""))

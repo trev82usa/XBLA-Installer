@@ -56,7 +56,7 @@ kept as `default.xex.orig`.
 | Game | Title ID | Needs default.xex version | Files |
 |---|---|---|---|
 | Trials HD | `5841095A` | 0.0.1.2 | `default.xex`, `data/` |
-| Guardian Heroes | `58410B2B` | 0.0.0.3 | `default.xex`, `media/` |
+| Guardian Heroes | `58410B2B` | 0.0.0.3 or 0.0.0.2 | `default.xex`, `media/` |
 | Root Beer Tapper | `5841082D` | 0.0.1.2 | `default.xex`, `media/`, `classic/` |
 | The Simpsons Arcade | `584108FA` | (not checked) | `default.xex`, `0B/` |
 

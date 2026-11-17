@@ -3,6 +3,9 @@
 - **Windows:** download `XBLA-Installer.exe` and double-click it.
 - **Linux:** download `XBLA-Installer-linux-x64.tar.gz`, extract, run `./XBLA-Installer`.
 
+**New in 1.1.2**
+- Guardian Heroes: both 0.0.0.3 and the original 0.0.0.2 release are accepted (the port now ships a build for each).
+
 **New in 1.1.1**
 - DLC, avatar items and other add-on packages no longer say you need the title update; the version check only applies to the game itself. Add-ons are just extracted.
 - Content types are shown by name (DLC, Avatar item, Theme, Gamer picture, ...).
